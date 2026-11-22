@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Smart Cut — Melamine Board & Cut-List Optimization Software</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            brand: {
+              dark: '#0F172A',
+              slate: '#1E293B',
+              teal: '#0D9488',
+              tealHover: '#0F766E',
+              amber: '#D97706',
+              surface: '#F8FAFC',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #F8FAFC;
+      color: #0F172A;
+    }
+
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar { width: 7px; height: 7px; }
+    ::-webkit-scrollbar-track { background: #F1F5F9; }
+    ::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
+
+    /* Print Styles */
+    @media print {
+      * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+      }
+      html, body {
+        background: #FFFFFF !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: visible !important;
+        height: auto !important;
+      }
+      body * {
+        visibility: hidden;
+      }
+      #printable-area, #printable-area * {
+        visibility: visible;
+      }
+      #printable-area {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        margin: 0;
+        padding: 10mm;
+        background: #FFFFFF !important;
+        box-shadow: none !important;
+        border: none !important;
+      }
+      .no-print {
+        display: none !important;
+      }
+      @page {
+        size: A4 portrait;
+        margin: 8mm;
+      }
+    }
+
+    /* Hatch pattern for offcuts/waste */
+    .hatch-waste {
+      background-image: repeating-linear-gradient(
+        45deg,
+        #f1f5f9,
+        #f1f5f9 6px,
+        #e2e8f0 6px,
+        #e2e8f0 12px
+      );
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col bg-slate-50 text-slate-900 antialiased">
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+  <!-- Custom Modal Container -->
+  <div id="modal-backdrop" class="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-40 hidden items-center justify-center p-4">
+    <div id="modal-box" class="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden transform transition-all">
+      <div class="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
+        <h3 id="modal-title" class="text-lg font-semibold tracking-tight">Modal Title</h3>
+        <button onclick="closeModal()" class="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div id="modal-content" class="p-6 overflow-y-auto space-y-4"></div>
+    </div>
+  </div>
+
+  <!-- Main Application Mount Point -->
+  <div id="app" class="flex-1 flex flex-col"></div>
+
+  <!-- Global Footer -->
+  <footer class="no-print bg-slate-900 text-slate-400 text-xs py-3 px-6 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-2">
+    <div class="flex items-center gap-2">
+      <span class="inline-block w-2 h-2 rounded-full bg-teal-500"></span>
+      <span class="font-medium text-slate-300">Smart Cut v2.9.6</span>
+      <span>— Melamine Board &amp; Cut-List Optimization System</span>
+    </div>
+    <div class="font-medium text-slate-300 text-center sm:text-right">
+      Reserved Copyright &copy; 2026 Chinenguo Creative Hub. All Rights Reserved.
+    </div>
+  </footer>
+
+  <script>
+    /*************************************************************************
+     * 1. CUSTOM SVG LOGO: FRIENDLY ALIEN HOLDING A CARPENTER'S HAND WOOD SAW
+     *************************************************************************/
+    function getAlienSawLogoSVG(sizeClass = "w-11 h-11") {
+      return `
+        <svg class="${sizeClass} shrink-0" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Smart Cut Alien Hand Saw Logo">
+          <!-- Outer Industrial Emblem Circle -->
+          <circle cx="60" cy="60" r="56" fill="#0F172A" stroke="#0D9488" stroke-width="4"/>
+          <circle cx="60" cy="60" r="49" fill="#1E293B" stroke="#334155" stroke-width="1.5" stroke-dasharray="4 3"/>
+
+          <!-- Alien Antennae -->
+          <path d="M44 26 Q37 14 31 15" stroke="#10B981" stroke-width="3.5" stroke-linecap="round"/>
+          <circle cx="30" cy="15" r="4" fill="#34D399"/>
+          <path d="M68 26 Q75 14 81 15" stroke="#10B981" stroke-width="3.5" stroke-linecap="round"/>
+          <circle cx="82" cy="15" r="4" fill="#34D399"/>
+
+          <!-- Alien Head -->
+          <path d="M34 42 C34 25, 78 25, 78 42 C78 57, 65 67, 56 67 C47 67, 34 57, 34 42 Z" fill="#10B981" stroke="#059669" stroke-width="2"/>
+
+          <!-- Alien Big Almond Eyes -->
+          <ellipse cx="47" cy="43" rx="6.5" ry="9" transform="rotate(-14 47 43)" fill="#0F172A"/>
+          <circle cx="45" cy="40" r="2" fill="#FFFFFF"/>
+          <ellipse cx="65" cy="43" rx="6.5" ry="9" transform="rotate(14 65 43)" fill="#0F172A"/>
+          <circle cx="63" cy="40" r="2" fill="#FFFFFF"/>
+
+          <!-- Friendly Focused Smile -->
+          <path d="M51 56 Q56 60 61 56" stroke="#0F172A" stroke-width="2.2" stroke-linecap="round"/>
+
+          <!-- Alien Torso / Workshop Apron -->
+          <path d="M40 94 C40 76, 72 76, 72 94 Z" fill="#0D9488"/>
+          <rect x="47" y="77" width="18" height="17" rx="2" fill="#D97706"/>
+          <line x1="47" y1="77" x2="45" y2="70" stroke="#D97706" stroke-width="2.5"/>
+          <line x1="65" y1="77" x2="67" y2="70" stroke="#D97706" stroke-width="2.5"/>
+
+          <!-- Hand Wood Saw (Steel Blade + Teeth + Wooden Handle) -->
+          <!-- Saw Blade -->
+          <polygon points="24,78 86,66 88,75 24,84" fill="#E2E8F0" stroke="#64748B" stroke-width="1.5"/>
+          <!-- Saw Teeth along bottom edge -->
+          <path d="M26 84 L30 87 L33 83.5 L37 86.5 L40 82.8 L44 85.8 L47 82 L51 85 L54 81.2 L58 84.2 L61 80.5 L65 83.5 L68 79.5 L72 82.5 L75 78.8 L79 81.5 L82 77.5" stroke="#475569" stroke-width="1.3" fill="none"/>
+          <!-- Wooden Saw Handle -->
+          <path d="M84 62 L98 60 C102 60, 104 63, 104 67 L103 77 C103 80, 100 82, 96 82 L85 81 Z" fill="#B45309" stroke="#78350F" stroke-width="1.8"/>
+          <rect x="90" y="66" width="8" height="9" rx="2" fill="#1E293B"/>
+
+          <!-- Alien Hands Holding the Saw -->
+          <circle cx="88" cy="72" r="5.5" fill="#10B981" stroke="#047857" stroke-width="1.5"/>
+          <circle cx="42" cy="79" r="5" fill="#10B981" stroke="#047857" stroke-width="1.5"/>
+        </svg>
+      `;
+    }
+
+    /*************************************************************************
+     * 2. DEFAULT DATA & LOCALSTORAGE STATE MANAGEMENT
+     *************************************************************************/
+    const STORAGE_KEY = 'smart_cut_db_v1';
+
+    const DEFAULT_DATA = {
+      settings: {
+        companyName: 'Chinenguo Melamine & Boards Ltd',
+        tagline: 'Precision Melamine Boards, Cut-to-Size & Carpentry Hardware',
+        address: 'Plot 4512, Industrial Road, Light Industrial Area',
+        cityCountry: 'Lusaka, Zambia',
+        phone: '+260 977 554 321',
+        email: 'sales@smartcutboards.com',
+        website: 'www.smartcutboards.com',
+        taxRegNo: 'TPIN-1004892310',
+        bankName: 'Zambia National Commercial Bank (Zanaco)',
+        accountName: 'Chinenguo Melamine & Boards Ltd',
+        accountNumber: '5849201900184',
+        branchCode: '010001',
+        swiftCode: 'ZANAZMLU',
+        currency: 'ZMW',
+        customLogoBase64: '',
+        useCustomLogo: false
+      },
+      taxRules: {
+        taxName: 'VAT',
+        taxRate: 16,
+        cuttingChargePerSheet: 65,
+        edgingChargePerMeter: 8,
+        groovingChargePerMeter: 12,
+        bladeKerfMm: 3.2
+      },
+      sheets: [
+        { id: 'SH-01', code: 'WHT-16', name: 'White Melamine Board', thickness: 16, length: 2750, width: 1830, grain: 'None', costPrice: 480, sellPrice: 680, openingStock: 85, usedStock: 12, color: '#F8FAFC' },
+        { id: 'SH-02', code: 'BRK-16', name: 'Brukhill Oak Melamine', thickness: 16, length: 2750, width: 1830, grain: 'Length', costPrice: 620, sellPrice: 890, openingStock: 50, usedStock: 8, color: '#D6A87C' },
+        { id: 'SH-03', code: 'SAH-16', name: 'Sahara Textured Board', thickness: 16, length: 2750, width: 1830, grain: 'Length', costPrice: 640, sellPrice: 920, openingStock: 42, usedStock: 6, color: '#E6C79C' },
+        { id: 'SH-04', code: 'GLS-16', name: 'High Gloss Arctic White', thickness: 16, length: 2750, width: 1830, grain: 'None', costPrice: 850, sellPrice: 1250, openingStock: 28, usedStock: 4, color: '#E0F2FE' },
+        { id: 'SH-05', code: 'MDF-16', name: 'Supawood MDF Raw', thickness: 16, length: 2750, width: 1830, grain: 'None', costPrice: 430, sellPrice: 610, openingStock: 60, usedStock: 10, color: '#C8A986' },
+        { id: 'SH-06', code: 'MSN-03', name: 'Masonite Backing White', thickness: 3, length: 2440, width: 1220, grain: 'None', costPrice: 140, sellPrice: 220, openingStock: 95, usedStock: 15, color: '#F1F5F9' },
+        { id: 'SH-07', code: 'QTZ-32', name: 'Quartz Countertop Postform', thickness: 32, length: 3600, width: 600, grain: 'Length', costPrice: 1100, sellPrice: 1580, openingStock: 12, usedStock: 3, color: '#CBD5E1' },
+        { id: 'SH-08', code: 'GLS-04', name: 'Clear Float Glass 4mm', thickness: 4, length: 2440, width: 1830, grain: 'None', costPrice: 310, sellPrice: 460, openingStock: 18, usedStock: 2, color: '#BAE6FD' }
+      ],
+      offcuts: [
+        { id: 'OFF-01', materialId: 'SH-02', materialName: 'Brukhill Oak Melamine', thickness: 16, length: 1450, width: 620, qty: 3, rack: 'RACK-A1', discountPct: 35, status: 'Available' },
+        { id: 'OFF-02', materialId: 'SH-01', materialName: 'White Melamine Board', thickness: 16, length: 1830, width: 580, qty: 5, rack: 'RACK-A2', discountPct: 30, status: 'Available' },
+        { id: 'OFF-03', materialId: 'SH-03', materialName: 'Sahara Textured Board', thickness: 16, length: 1200, width: 750, qty: 2, rack: 'RACK-B1', discountPct: 35, status: 'Available' }
+      ],
+      edging: [
+        { id: 'EDG-01', name: 'White PVC 1mm x 22mm', width: 22, thickness: 1.0, pricePerMeter: 12, stockMeters: 1200, color: '#0284C7' },
+        { id: 'EDG-02', name: 'White Impact PVC 2mm x 22mm', width: 22, thickness: 2.0, pricePerMeter: 22, stockMeters: 850, color: '#2563EB' },
+        { id: 'EDG-03', name: 'Brukhill Oak PVC 1mm x 22mm', width: 22, thickness: 1.0, pricePerMeter: 15, stockMeters: 740, color: '#B45309' },
+        { id: 'EDG-04', name: 'Sahara PVC 2mm x 22mm', width: 22, thickness: 2.0, pricePerMeter: 24, stockMeters: 600, color: '#D97706' },
+        { id: 'EDG-05', name: 'Gloss White ABS 1mm x 22mm', width: 22, thickness: 1.0, pricePerMeter: 28, stockMeters: 420, color: '#0D9488' }
+      ],
+      hardware: [
+        { id: 'HW-01', code: 'HNG-SC', name: 'Soft-Close Concealed Hinge (Pair)', category: 'Hardware', unit: 'Pair', price: 45, stock: 320 },
+        { id: 'HW-02', code: 'RUN-450', name: 'Ball Bearing Drawer Runner 450mm', category: 'Hardware', unit: 'Pair', price: 85, stock: 180 },
+        { id: 'HW-03', code: 'CAM-15', name: 'Minifix Cam Lock & Dowel Set (10pk)', category: 'Hardware', unit: 'Pack', price: 35, stock: 240 },
+        { id: 'HW-04', code: 'HDL-128', name: 'Brushed Aluminium Bar Handle 128mm', category: 'Hardware', unit: 'Each', price: 38, stock: 410 },
+        { id: 'HW-05', code: 'LEG-100', name: 'Adjustable Kitchen Plinth Leg 100mm', category: 'Hardware', unit: 'Each', price: 18, stock: 500 },
+        { id: 'HW-06', code: 'LAB-ASM', name: 'Cabinet Carcass Pre-Assembly Labour', category: 'Labour', unit: 'Unit', price: 150, stock: 9999 }
+      ],
+      customers: [
+        { id: 'CUST-01', name: 'Mwamba Interiors & Joinery', contact: 'Chanda Mwamba', phone: '+260 966 112 233', email: 'chanda@mwambainteriors.co.zm', taxNo: 'TPIN-200918231', address: '14 Leopards Hill Rd, Kabulonga', city: 'Lusaka', deliveryCharge: 250 },
+        { id: 'CUST-02', name: 'Kabwe Modern Kitchens', contact: 'Bwalya Tembo', phone: '+260 955 887 766', email: 'bwalya@kabwemodern.com', taxNo: 'TPIN-100394812', address: 'Plot 88 Independence Ave', city: 'Kabwe', deliveryCharge: 450 },
+        { id: 'CUST-03', name: 'Walk-In Cash Client', contact: 'General Customer', phone: '+260 970 000 000', email: 'walkin@client.com', taxNo: '', address: 'Collection at Warehouse', city: 'Lusaka', deliveryCharge: 0 }
+      ],
+      quotes: [
+        {
+          id: 'QT-2026-101',
+          jobCode: '20',
+          invoiceNo: 'INV-2026-088',
+          date: '2026-11-18',
+          dateRequired: '2026-11-22',
+          reference: 'Bedroom 2 Built-in Wardrobe',
+          customerId: 'CUST-01',
+          notes: 'Ensure grain matches vertically on all doors. Groove back panels 16mm from rear edge.',
+          status: 'Paid',
+          paidDate: '2026-11-19',
+          paymentMethod: 'Bank Transfer (EFT)',
+          panels: [
+            { id: 'P-1', name: 'Wardrobe Side Left/Right', length: 2100, width: 580, qty: 2, materialId: 'SH-02', edgeL1: 'EDG-03', edgeL2: '', edgeW1: 'EDG-03', edgeW2: 'EDG-03', hasGroove: true, grooveEdge: 'L2', grooveDist: 16, grooveWidth: 4, grooveDepth: 8, notes: 'Back groove for 3mm Masonite' },
+            { id: 'P-2', name: 'Top & Bottom Shelf', length: 1168, width: 580, qty: 2, materialId: 'SH-02', edgeL1: 'EDG-03', edgeL2: '', edgeW1: '', edgeW2: '', hasGroove: true, grooveEdge: 'L2', grooveDist: 16, grooveWidth: 4, grooveDepth: 8, notes: '' },
+            { id: 'P-3', name: 'Internal Adjustable Shelves', length: 1164, width: 540, qty: 4, materialId: 'SH-01', edgeL1: 'EDG-01', edgeL2: '', edgeW1: '', edgeW2: '', hasGroove: false, grooveEdge: 'L2', grooveDist: 16, grooveWidth: 4, grooveDepth: 8, notes: '' },
+            { id: 'P-4', name: 'Wardrobe Hinged Doors', length: 2040, width: 595, qty: 2, materialId: 'SH-03', edgeL1: 'EDG-04', edgeL2: 'EDG-04', edgeW1: 'EDG-04', edgeW2: 'EDG-04', hasGroove: false, grooveEdge: 'L2', grooveDist: 16, grooveWidth: 4, grooveDepth: 8, notes: 'Edged all round 2mm' },
+            { id: 'P-5', name: 'Wardrobe Back Panel', length: 2060, width: 1180, qty: 1, materialId: 'SH-06', edgeL1: '', edgeL2: '', edgeW1: '', edgeW2: '', hasGroove: false, grooveEdge: 'L2', grooveDist: 16, grooveWidth: 4, grooveDepth: 8, notes: '3mm Masonite' }
+          ],
+          hardwareItems: [
+            { id: 'HI-1', hardwareId: 'HW-01', qty: 4 },
+            { id: 'HI-2', hardwareId: 'HW-04', qty: 2 },
+            { id: 'HI-3', hardwareId: 'HW-03', qty: 2 }
+          ],
+          deliveryCharge: 250,
+          totals: {
+            sheetsCost: 3810,
+            edgingCost: 394.8,
+            cuttingCost: 325,
+            edgingLabourCost: 210.56,
+            groovingLabourCost: 78.43,
+            hardwareCost: 326,
+            deliveryCharge: 250,
+            subtotal: 5394.79,
+            taxAmount: 863.17,
+            grandTotal: 6257.96
+          }
+        },
+        {
+          id: 'QT-2026-102',
+          jobCode: '21',
+          invoiceNo: '',
+          date: '2026-11-20',
+          dateRequired: '2026-11-25',
+          reference: 'Kitchen Base & Wall Units',
+          customerId: 'CUST-02',
+          notes: 'High gloss fronts with 2mm edging. Deliver to Kabwe branch.',
+          status: 'Pending',
+          paidDate: '',
+          paymentMethod: '',
+          panels: [
+            { id: 'P-10', name: 'Base Carcass Sides', length: 720, width: 560, qty: 6, materialId: 'SH-01', edgeL1: 'EDG-01', edgeL2: '', edgeW1: 'EDG-01', edgeW2: '', hasGroove: true, grooveEdge: 'L2', grooveDist: 16, grooveWidth: 4, grooveDepth: 8, notes: '' },
+            { id: 'P-11', name: 'Base Bottoms & Stretchers', length: 868, width: 560, qty: 4, materialId: 'SH-01', edgeL1: 'EDG-01', edgeL2: '', edgeW1: '', edgeW2: '', hasGroove: false, grooveEdge: 'L2', grooveDist: 16, grooveWidth: 4, grooveDepth: 8, notes: '' },
+            { id: 'P-12', name: 'High Gloss Drawer Fronts', length: 715, width: 445, qty: 6, materialId: 'SH-04', edgeL1: 'EDG-05', edgeL2: 'EDG-05', edgeW1: 'EDG-05', edgeW2: 'EDG-05', hasGroove: false, grooveEdge: 'L2', grooveDist: 16, grooveWidth: 4, grooveDepth: 8, notes: 'Handleless bevel' }
+          ],
+          hardwareItems: [
+            { id: 'HI-10', hardwareId: 'HW-01', qty: 6 },
+            { id: 'HI-11', hardwareId: 'HW-02', qty: 3 },
+            { id: 'HI-12', hardwareId: 'HW-05', qty: 12 }
+          ],
+          deliveryCharge: 450,
+          totals: {
+            sheetsCost: 2610,
+            edgingCost: 525.12,
+            cuttingCost: 195,
+            edgingLabourCost: 185.4,
+            groovingLabourCost: 51.84,
+            hardwareCost: 741,
+            deliveryCharge: 450,
+            subtotal: 4758.36,
+            taxAmount: 761.34,
+            grandTotal: 5519.70
+          }
+        }
+      ]
+    };
+
+    function loadDB() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(DEFAULT_DATA));
+          return JSON.parse(JSON.stringify(DEFAULT_DATA));
+        }
+        return JSON.parse(raw);
+      } catch (e) {
+        return JSON.parse(JSON.stringify(DEFAULT_DATA));
+      }
+    }
+
+    function saveDB() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(db));
+    }
+
+    let db = loadDB();
+
+    /*************************************************************************
+     * 3. APPLICATION RUNTIME STATE
+     *************************************************************************/
+    let state = {
+      currentUser: null, // { role: 'admin' | 'sales', username: string, displayName: string }
+      adminTab: 'stock', // 'stock' | 'sheets' | 'offcuts' | 'edging' | 'hardware' | 'tax' | 'quotes' | 'settings'
+      salesTab: 'job',   // 'job' | 'items' | 'layouts' | 'reports'
+      activeReport: 'quote', // 'quote' | 'invoice' | 'cutting' | 'edging' | 'grooving'
+      selectedSheetIdx: 0,
+      layoutZoom: 1,
+      quoteFilter: 'All',
+      quoteSearch: '',
+      // Active Sales Job Workspace
+      currentJob: createEmptyJob()
+    };
+
+    function createEmptyJob() {
+      const nextNum = 100 + db.quotes.length + 1;
+      const defaultCust = db.customers[0] || { id: '', deliveryCharge: 0 };
+      return {
+        id: `QT-2026-${nextNum}`,
+        jobCode: String(20 + db.quotes.length + 1),
+        invoiceNo: '',
+        date: new Date().toISOString().slice(0, 10),
+        dateRequired: new Date(Date.now() + 4 * 86400000).toISOString().slice(0, 10),
+        reference: 'Custom Melamine Cabinetry Job',
+        customerId: defaultCust.id,
+        notes: 'Standard 16mm melamine carcass. Check edge banding thickness before cutting.',
+        status: 'Pending',
+        paidDate: '',
+        paymentMethod: '',
+        panels: [
+          {
+            id: 'PNL-' + Date.now(),
+       
